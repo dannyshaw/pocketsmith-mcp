@@ -32,6 +32,16 @@ class Category(BaseModel):
     children: list["Category"] = Field(default_factory=list)
 
 
+class Institution(BaseModel):
+    """Pocketsmith institution model."""
+
+    id: int
+    title: str
+    currency_code: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class TransactionAccount(BaseModel):
     """Pocketsmith transaction account model."""
 
@@ -39,7 +49,19 @@ class TransactionAccount(BaseModel):
     name: str
     number: str | None = None
     current_balance: float | None = None
+    current_balance_date: str | None = None
+    current_balance_in_base_currency: float | None = None
+    current_balance_exchange_rate: float | None = None
     currency_code: str | None = None
+    type: str | None = None
+    is_net_worth: bool = False
+    starting_balance: float | None = None
+    starting_balance_date: str | None = None
+    safe_balance: float | None = None
+    safe_balance_in_base_currency: float | None = None
+    institution: Institution | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class Transaction(BaseModel):
@@ -73,6 +95,67 @@ class Transaction(BaseModel):
         if v is None:
             return False
         return bool(v)
+
+
+class Scenario(BaseModel):
+    """Pocketsmith scenario model."""
+
+    id: int
+    title: str
+    description: str | None = None
+    interest_rate: float | None = None
+    interest_rate_repeat_id: int | None = None
+    type: str | None = None
+    minimum_value: float | None = None
+    maximum_value: float | None = None
+    achieve_date: str | None = None
+    starting_balance: float | None = None
+    starting_balance_date: str | None = None
+    closing_balance: float | None = None
+    closing_balance_date: str | None = None
+    current_balance: float | None = None
+    current_balance_in_base_currency: float | None = None
+    current_balance_exchange_rate: float | None = None
+    safe_balance: float | None = None
+    safe_balance_in_base_currency: float | None = None
+
+
+class Account(BaseModel):
+    """Pocketsmith account model."""
+
+    id: int
+    title: str
+    currency_code: str
+    type: str
+    is_net_worth: bool = False
+    current_balance: float | None = None
+    current_balance_in_base_currency: float | None = None
+    current_balance_date: str | None = None
+    safe_balance: float | None = None
+    safe_balance_in_base_currency: float | None = None
+    primary_transaction_account: TransactionAccount | None = None
+    transaction_accounts: list[TransactionAccount] = Field(default_factory=list)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class Event(BaseModel):
+    """Pocketsmith event model (recurring transaction)."""
+
+    id: str
+    category: Category | None = None
+    scenario: Scenario | None = None
+    amount: float
+    amount_in_base_currency: float | None = None
+    currency_code: str | None = None
+    date: date
+    colour: str | None = None
+    note: str | None = None
+    repeat_type: str
+    repeat_interval: int = 1
+    series_id: int
+    series_start_id: str | None = None
+    infinite_series: bool = False
 
 
 class CategoryRule(BaseModel):
@@ -325,3 +408,256 @@ class PocketsmithClient:
     def search_transactions(self, query: str, **kwargs) -> list[Transaction]:
         """Search transactions by keyword."""
         return self.list_all_transactions(search=query, **kwargs)
+
+    # Tier 1 methods - Account and budget management
+
+    def list_accounts(self, user_id: int | None = None) -> list[Account]:
+        """List all accounts for a user."""
+        user_id = user_id or self.get_user_id()
+        data = self._request("GET", f"/users/{user_id}/accounts")
+        return [Account.model_validate(a) for a in data]
+
+    def get_account(self, account_id: int) -> Account:
+        """Get a specific account by ID."""
+        data = self._request("GET", f"/accounts/{account_id}")
+        return Account.model_validate(data)
+
+    def get_budget_summary(
+        self,
+        user_id: int | None = None,
+        period: str = "months",
+        interval: int = 1,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> Any:
+        """Get budget summary for a period and date range."""
+        user_id = user_id or self.get_user_id()
+        params = {
+            "period": period,
+            "interval": interval,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+        }
+        return self._request("GET", f"/users/{user_id}/budget_summary", params=params)
+
+    def list_budget(self, user_id: int | None = None, roll_up: bool | None = None) -> Any:
+        """List per-category budget analysis."""
+        user_id = user_id or self.get_user_id()
+        params = {"roll_up": 1 if roll_up else None}
+        return self._request("GET", f"/users/{user_id}/budget", params=params)
+
+    def get_trend_analysis(
+        self,
+        user_id: int | None = None,
+        period: str = "months",
+        interval: int = 1,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        categories: list[int] | None = None,
+        scenarios: list[int] | None = None,
+    ) -> Any:
+        """Get trend analysis across categories and scenarios."""
+        user_id = user_id or self.get_user_id()
+        params = {
+            "period": period,
+            "interval": interval,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "categories": ",".join(str(c) for c in categories) if categories else None,
+            "scenarios": ",".join(str(s) for s in scenarios) if scenarios else None,
+        }
+        return self._request("GET", f"/users/{user_id}/trend_analysis", params=params)
+
+    def create_transaction(
+        self,
+        transaction_account_id: int,
+        payee: str,
+        amount: float,
+        date: date,
+        is_transfer: bool | None = None,
+        labels: list[str] | None = None,
+        category_id: int | None = None,
+        note: str | None = None,
+        memo: str | None = None,
+        cheque_number: str | None = None,
+        needs_review: bool | None = None,
+    ) -> Transaction:
+        """Create a new transaction."""
+        body: dict[str, Any] = {
+            "payee": payee,
+            "amount": amount,
+            "date": date.isoformat(),
+        }
+
+        if is_transfer is not None:
+            body["is_transfer"] = is_transfer
+        if labels is not None:
+            body["labels"] = ",".join(labels)
+        if category_id is not None:
+            body["category_id"] = category_id
+        if note is not None:
+            body["note"] = note
+        if memo is not None:
+            body["memo"] = memo
+        if cheque_number is not None:
+            body["cheque_number"] = cheque_number
+        if needs_review is not None:
+            body["needs_review"] = needs_review
+
+        data = self._request(
+            "POST", f"/transaction_accounts/{transaction_account_id}/transactions", json=body
+        )
+        return Transaction.model_validate(data)
+
+    def list_labels(self, user_id: int | None = None) -> list[str]:
+        """List all labels for a user."""
+        user_id = user_id or self.get_user_id()
+        data = self._request("GET", f"/users/{user_id}/labels")
+        return data if isinstance(data, list) else []
+
+    # Tier 2 methods - Enhanced filtering and management
+
+    def list_transactions_by_account(
+        self,
+        account_id: int,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        needs_review: bool | None = None,
+        uncategorised: bool | None = None,
+        search: str | None = None,
+        transaction_type: str | None = None,
+        page: int = 1,
+    ) -> list[Transaction]:
+        """List transactions for a specific account."""
+        params = {
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "needs_review": 1 if needs_review else None,
+            "uncategorised": 1 if uncategorised else None,
+            "search": search,
+            "type": transaction_type,
+            "page": page,
+        }
+
+        try:
+            data = self._request("GET", f"/accounts/{account_id}/transactions", params=params)
+            return [Transaction.model_validate(t) for t in data]
+        except PocketsmithError as e:
+            if e.status_code == 400 and "page" in e.message.lower():
+                return []
+            raise
+
+    def list_transactions_by_category(
+        self,
+        category_ids: list[int],
+        start_date: date | None = None,
+        end_date: date | None = None,
+        needs_review: bool | None = None,
+        uncategorised: bool | None = None,
+        search: str | None = None,
+        transaction_type: str | None = None,
+        page: int = 1,
+    ) -> list[Transaction]:
+        """List transactions for one or more categories."""
+        params = {
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "needs_review": 1 if needs_review else None,
+            "uncategorised": 1 if uncategorised else None,
+            "search": search,
+            "type": transaction_type,
+            "page": page,
+        }
+
+        # Convert category_ids list to comma-separated string
+        category_filter = ",".join(str(c) for c in category_ids)
+        endpoint = f"/categories/{category_filter}/transactions"
+
+        try:
+            data = self._request("GET", endpoint, params=params)
+            return [Transaction.model_validate(t) for t in data]
+        except PocketsmithError as e:
+            if e.status_code == 400 and "page" in e.message.lower():
+                return []
+            raise
+
+    def create_category(
+        self,
+        user_id: int | None = None,
+        title: str = "",
+        colour: str | None = None,
+        parent_id: int | None = None,
+        is_transfer: bool | None = None,
+        is_bill: bool | None = None,
+        roll_up: bool | None = None,
+        refund_behaviour: str | None = None,
+    ) -> Category:
+        """Create a new category."""
+        user_id = user_id or self.get_user_id()
+        body: dict[str, Any] = {"title": title}
+
+        if colour is not None:
+            body["colour"] = colour
+        if parent_id is not None:
+            body["parent_id"] = parent_id
+        if is_transfer is not None:
+            body["is_transfer"] = is_transfer
+        if is_bill is not None:
+            body["is_bill"] = is_bill
+        if roll_up is not None:
+            body["roll_up"] = roll_up
+        if refund_behaviour is not None:
+            body["refund_behaviour"] = refund_behaviour
+
+        data = self._request("POST", f"/users/{user_id}/categories", json=body)
+        return Category.model_validate(data)
+
+    def list_events(
+        self,
+        user_id: int | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[Event]:
+        """List events (recurring transactions) for a date range."""
+        user_id = user_id or self.get_user_id()
+        params = {
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+        }
+        data = self._request("GET", f"/users/{user_id}/events", params=params)
+        return [Event.model_validate(e) for e in data]
+
+    def create_event(
+        self,
+        scenario_id: int,
+        category_id: int,
+        date: date,
+        amount: float,
+        repeat_type: str = "once",
+        repeat_interval: int = 1,
+        note: str | None = None,
+    ) -> Event:
+        """Create a new event (recurring transaction)."""
+        body: dict[str, Any] = {
+            "category_id": category_id,
+            "date": date.isoformat(),
+            "amount": amount,
+            "repeat_type": repeat_type,
+            "repeat_interval": repeat_interval,
+        }
+
+        if note is not None:
+            body["note"] = note
+
+        data = self._request("POST", f"/scenarios/{scenario_id}/events", json=body)
+        return Event.model_validate(data)
+
+    def delete_transaction(self, transaction_id: int) -> None:
+        """Delete a transaction."""
+        self._request("DELETE", f"/transactions/{transaction_id}")
+
+    def list_transaction_accounts(self, user_id: int | None = None) -> list[TransactionAccount]:
+        """List all transaction accounts for a user."""
+        user_id = user_id or self.get_user_id()
+        data = self._request("GET", f"/users/{user_id}/transaction_accounts")
+        return [TransactionAccount.model_validate(ta) for ta in data]

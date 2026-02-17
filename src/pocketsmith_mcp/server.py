@@ -9,21 +9,14 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from pocketsmith_mcp.client import (
+    Account,
     Category,
+    Event,
     PocketsmithClient,
     PocketsmithError,
     Transaction,
+    TransactionAccount,
 )
-
-# Import Amazon split utilities and models (local to this package)
-from pocketsmith_mcp.amazon_split import (
-    OrderItemSplit,
-    OrderSplitter,
-    PRODUCT_CATEGORY_MAPPING,
-)
-from pocketsmith_mcp.amazon_models import AmazonOrder, AmazonItem
-
-AMAZON_SPLIT_AVAILABLE = True
 
 # Create the MCP server
 server = Server("pocketsmith")
@@ -96,6 +89,61 @@ def flatten_categories(categories: list[Category]) -> list[dict[str, Any]]:
 
     walk(categories)
     return result
+
+
+def account_to_dict(a: Account) -> dict[str, Any]:
+    """Convert an account to a dictionary for JSON output."""
+    return {
+        "id": a.id,
+        "title": a.title,
+        "type": a.type,
+        "currency_code": a.currency_code,
+        "is_net_worth": a.is_net_worth,
+        "current_balance": a.current_balance,
+        "current_balance_in_base_currency": a.current_balance_in_base_currency,
+        "current_balance_date": a.current_balance_date,
+        "safe_balance": a.safe_balance,
+        "safe_balance_in_base_currency": a.safe_balance_in_base_currency,
+        "primary_account": a.primary_transaction_account.name if a.primary_transaction_account else None,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
+    }
+
+
+def event_to_dict(e: Event) -> dict[str, Any]:
+    """Convert an event to a dictionary for JSON output."""
+    return {
+        "id": e.id,
+        "date": e.date.isoformat(),
+        "amount": e.amount,
+        "currency_code": e.currency_code,
+        "category": e.category.title if e.category else None,
+        "category_id": e.category.id if e.category else None,
+        "note": e.note,
+        "repeat_type": e.repeat_type,
+        "repeat_interval": e.repeat_interval,
+        "series_id": e.series_id,
+        "infinite_series": e.infinite_series,
+        "scenario": e.scenario.title if e.scenario else None,
+    }
+
+
+def transaction_account_to_dict(ta: TransactionAccount) -> dict[str, Any]:
+    """Convert a transaction account to a dictionary for JSON output."""
+    return {
+        "id": ta.id,
+        "name": ta.name,
+        "number": ta.number,
+        "type": ta.type,
+        "currency_code": ta.currency_code,
+        "current_balance": ta.current_balance,
+        "current_balance_date": ta.current_balance_date,
+        "safe_balance": ta.safe_balance,
+        "starting_balance": ta.starting_balance,
+        "starting_balance_date": ta.starting_balance_date,
+        "institution": ta.institution.title if ta.institution else None,
+        "is_net_worth": ta.is_net_worth,
+    }
 
 
 @server.list_tools()
@@ -275,82 +323,368 @@ async def list_tools() -> list[Tool]:
                 "properties": {},
             },
         ),
+        # Tier 1 tools
         Tool(
-            name="pocketsmith_split_amazon_order",
-            description="Preview how an Amazon order would be split into categorized items",
+            name="pocketsmith_list_accounts",
+            description="List all accounts with balances and details",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "order_data": {
-                        "type": "string",
-                        "description": "Amazon order CSV data (Website, Order ID, Date, Amount, Product Name)",
-                    },
-                    "min_split_amount": {
-                        "type": "number",
-                        "description": "Minimum amount to attempt splitting (default 5.0)",
-                    },
-                    "max_splits": {
-                        "type": "integer",
-                        "description": "Maximum number of items to split (default 10)",
-                    },
-                },
-                "required": ["order_data"],
+                "properties": {},
             },
         ),
         Tool(
-            name="pocketsmith_add_split_note",
-            description="Add Amazon split details as a note to an existing transaction",
+            name="pocketsmith_get_account",
+            description="Get details of a specific account by ID",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "transaction_id": {
+                    "account_id": {
                         "type": "integer",
-                        "description": "The transaction ID to add note to",
+                        "description": "The account ID",
                     },
-                    "order_data": {
+                },
+                "required": ["account_id"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_get_budget_summary",
+            description="Get budget summary for a period and date range",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "period": {
                         "type": "string",
-                        "description": "Amazon order CSV data for this transaction",
+                        "enum": ["weeks", "months", "years"],
+                        "description": "The period for the budget summary (default: months)",
                     },
-                    "min_split_amount": {
-                        "type": "number",
-                        "description": "Minimum amount to attempt splitting (default 5.0)",
-                    },
-                    "max_splits": {
+                    "interval": {
                         "type": "integer",
-                        "description": "Maximum number of items to split (default 10)",
+                        "description": "The interval for the period (default: 1)",
                     },
-                    "confirm_splits": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date for the budget summary (YYYY-MM-DD)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date for the budget summary (YYYY-MM-DD)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_list_budget",
+            description="List per-category budget analysis",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "roll_up": {
                         "type": "boolean",
-                        "description": "Also update transaction category based on split (default false)",
+                        "description": "Whether to roll up child categories into parent categories",
                     },
                 },
-                "required": ["transaction_id", "order_data"],
             },
         ),
         Tool(
-            name="pocketsmith_split_transaction",
-            description="Split an Amazon transaction into multiple categorized transactions using PocketSmith's split API. Provide order data as tab-separated values: 'Order ID\\tDate\\tAmount\\tProduct Name'. The original transaction amount will be split into child transactions with proper categories, and the parent transaction will be updated with the remainder amount.",
+            name="pocketsmith_get_trend_analysis",
+            description="Get trend analysis across categories and scenarios",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "period": {
+                        "type": "string",
+                        "enum": ["weeks", "months", "years"],
+                        "description": "The period for trend analysis (default: months)",
+                    },
+                    "interval": {
+                        "type": "integer",
+                        "description": "The interval for the period (default: 1)",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date for trend analysis (YYYY-MM-DD)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date for trend analysis (YYYY-MM-DD)",
+                    },
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Category IDs to filter by",
+                    },
+                    "scenarios": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Scenario IDs to filter by",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_create_transaction",
+            description="Create a new transaction",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "transaction_account_id": {
+                        "type": "integer",
+                        "description": "The transaction account ID",
+                    },
+                    "payee": {
+                        "type": "string",
+                        "description": "The payee name",
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "The transaction amount (negative for debit, positive for credit)",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "The transaction date (YYYY-MM-DD)",
+                    },
+                    "is_transfer": {
+                        "type": "boolean",
+                        "description": "Whether this is a transfer between accounts",
+                    },
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Labels to assign to the transaction",
+                    },
+                    "category_id": {
+                        "type": "integer",
+                        "description": "Category ID to assign",
+                    },
+                    "note": {
+                        "type": "string",
+                        "description": "Note for the transaction",
+                    },
+                    "memo": {
+                        "type": "string",
+                        "description": "Memo for the transaction",
+                    },
+                    "needs_review": {
+                        "type": "boolean",
+                        "description": "Whether the transaction needs review",
+                    },
+                },
+                "required": ["transaction_account_id", "payee", "amount", "date"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_list_labels",
+            description="List all labels used in transactions",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        # Tier 2 tools
+        Tool(
+            name="pocketsmith_list_transactions_by_account",
+            description="List transactions for a specific account with optional filters",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "account_id": {
+                        "type": "integer",
+                        "description": "The account ID to filter by",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Filter transactions on or after this date (YYYY-MM-DD)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Filter transactions on or before this date (YYYY-MM-DD)",
+                    },
+                    "needs_review": {
+                        "type": "boolean",
+                        "description": "Filter to transactions that need review",
+                    },
+                    "uncategorised": {
+                        "type": "boolean",
+                        "description": "Filter to uncategorised transactions",
+                    },
+                    "search": {
+                        "type": "string",
+                        "description": "Search string to match against transaction fields",
+                    },
+                    "transaction_type": {
+                        "type": "string",
+                        "enum": ["debit", "credit"],
+                        "description": "Filter by transaction type",
+                    },
+                },
+                "required": ["account_id"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_list_transactions_by_category",
+            description="List transactions for one or more categories",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "category_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Category IDs to filter by",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Filter transactions on or after this date (YYYY-MM-DD)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Filter transactions on or before this date (YYYY-MM-DD)",
+                    },
+                    "needs_review": {
+                        "type": "boolean",
+                        "description": "Filter to transactions that need review",
+                    },
+                    "uncategorised": {
+                        "type": "boolean",
+                        "description": "Filter to uncategorised transactions",
+                    },
+                    "search": {
+                        "type": "string",
+                        "description": "Search string to match against transaction fields",
+                    },
+                    "transaction_type": {
+                        "type": "string",
+                        "enum": ["debit", "credit"],
+                        "description": "Filter by transaction type",
+                    },
+                },
+                "required": ["category_ids"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_create_category",
+            description="Create a new category",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "The category title",
+                    },
+                    "colour": {
+                        "type": "string",
+                        "description": "The category color in hex format (e.g., #FF0000)",
+                    },
+                    "parent_id": {
+                        "type": "integer",
+                        "description": "Parent category ID for creating a subcategory",
+                    },
+                    "is_transfer": {
+                        "type": "boolean",
+                        "description": "Whether this category represents a transfer",
+                    },
+                    "is_bill": {
+                        "type": "boolean",
+                        "description": "Whether this category represents a bill",
+                    },
+                    "roll_up": {
+                        "type": "boolean",
+                        "description": "Whether to roll up child categories",
+                    },
+                    "refund_behaviour": {
+                        "type": "string",
+                        "description": "How refunds should be handled",
+                    },
+                },
+                "required": ["title"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_list_events",
+            description="List events (recurring transactions) for a date range",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "start_date": {
+                        "type": "string",
+                        "description": "Start date for events (YYYY-MM-DD)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "End date for events (YYYY-MM-DD)",
+                    },
+                },
+                "required": ["start_date", "end_date"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_create_event",
+            description="Create a new event (recurring transaction)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "scenario_id": {
+                        "type": "integer",
+                        "description": "The scenario ID (get from account details)",
+                    },
+                    "category_id": {
+                        "type": "integer",
+                        "description": "The category ID to assign",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "The event date (YYYY-MM-DD)",
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "The event amount (negative for expenses, positive for income)",
+                    },
+                    "repeat_type": {
+                        "type": "string",
+                        "enum": ["once", "daily", "weekly", "fortnightly", "monthly", "yearly", "each weekday"],
+                        "description": "How often the event repeats",
+                    },
+                    "repeat_interval": {
+                        "type": "integer",
+                        "description": "The repeat interval (default: 1)",
+                    },
+                    "note": {
+                        "type": "string",
+                        "description": "Note for the event",
+                    },
+                },
+                "required": ["scenario_id", "category_id", "date", "amount", "repeat_type"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_delete_transaction",
+            description="Delete a transaction by ID",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "transaction_id": {
                         "type": "integer",
-                        "description": "The transaction ID to split",
-                    },
-                    "order_data": {
-                        "type": "string",
-                        "description": "Amazon order CSV data (tab-separated: Order ID, Date, Amount, Product Name). Multiple rows for same order ID are supported.",
-                    },
-                    "min_split_amount": {
-                        "type": "number",
-                        "description": "Minimum amount to attempt splitting (default 5.0)",
-                    },
-                    "max_splits": {
-                        "type": "integer",
-                        "description": "Maximum number of items to split (default 10)",
+                        "description": "The transaction ID to delete",
                     },
                 },
-                "required": ["transaction_id", "order_data"],
+                "required": ["transaction_id"],
+            },
+        ),
+        Tool(
+            name="pocketsmith_list_transaction_accounts",
+            description="List all transaction accounts with balances and details",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="pocketsmith_list_category_rules",
+            description="List all category rules (automatic categorization rules)",
+            inputSchema={
+                "type": "object",
+                "properties": {},
             },
         ),
     ]
@@ -457,402 +791,179 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             }
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-        elif name == "pocketsmith_split_amazon_order":
-            if not AMAZON_SPLIT_AVAILABLE:
-                return [TextContent(type="text", text=json.dumps({"error": "Amazon split utilities not available"}, indent=2))]
+        # Tier 1 tool handlers
+        elif name == "pocketsmith_list_accounts":
+            accounts = client.list_accounts()
+            result = [account_to_dict(a) for a in accounts]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-            # Parse CSV order data
-            order_data = arguments["order_data"]
-            min_split_amount = arguments.get("min_split_amount", 5.0)
-            max_splits = arguments.get("max_splits", 10)
+        elif name == "pocketsmith_get_account":
+            account = client.get_account(arguments["account_id"])
+            result = account_to_dict(account)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-            try:
-                # Parse CSV rows (simplified - expecting key format from CSV)
-                # Format: Website, Order ID, Order Date, Purchase Order Number, Currency,
-                #         Unit Price, Unit Price Tax, Shipping Charge, Total Discounts, Total Owed,
-                #         Shipment Item Subtotal, Shipment Item Subtotal Tax, ASIN, Product Condition,
-                #         Quantity, Payment Instrument Type, Order Status, Shipment Status, Ship Date,
-                #         Shipping Option, Shipping Address, Billing Address, Carrier Name & Tracking Number, Product Name
+        elif name == "pocketsmith_get_budget_summary":
+            start_date = date.fromisoformat(arguments["start_date"])
+            end_date = date.fromisoformat(arguments["end_date"])
+            period = arguments.get("period", "months")
+            interval = arguments.get("interval", 1)
 
-                # AmazonOrder, AmazonItem already imported at module level
+            result = client.get_budget_summary(
+                period=period,
+                interval=interval,
+                start_date=start_date,
+                end_date=end_date,
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                # Create splitter
-                splitter = OrderSplitter(
-                    min_split_amount=min_split_amount,
-                    max_splits=max_splits,
-                )
+        elif name == "pocketsmith_list_budget":
+            result = client.list_budget(roll_up=arguments.get("roll_up"))
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                # Parse order from CSV data
-                lines = order_data.strip().split("\n")
-                items = []
-                order_number = None
-                order_date = None
-                grand_total = 0.0
+        elif name == "pocketsmith_get_trend_analysis":
+            start_date = date.fromisoformat(arguments["start_date"])
+            end_date = date.fromisoformat(arguments["end_date"])
+            period = arguments.get("period", "months")
+            interval = arguments.get("interval", 1)
 
-                for line in lines:
-                    if not line.strip():
-                        continue
-                    parts = [p.strip() for p in line.split("\t")]
-                    if len(parts) < 18:
-                        continue
+            result = client.get_trend_analysis(
+                period=period,
+                interval=interval,
+                start_date=start_date,
+                end_date=end_date,
+                categories=arguments.get("categories"),
+                scenarios=arguments.get("scenarios"),
+            )
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                    # Extract fields
-                    website = parts[0]
-                    current_order_number = parts[1]
-                    date_str = parts[2]
-                    currency = parts[4]
-                    unit_price_str = parts[5]
-                    quantity_str = parts[13]
-                    product_name = parts[18]
+        elif name == "pocketsmith_create_transaction":
+            tx_date = date.fromisoformat(arguments["date"])
 
-                    # Track order number and date
-                    if current_order_number and current_order_number != "Not Applicable":
-                        order_number = current_order_number
-                    if date_str and date_str != "Not Applicable":
-                        try:
-                            # Parse ISO 8601 format
-                            order_date = date.fromisoformat(date_str.replace("Z", "+00:00").split("+")[0])
-                        except:
-                            pass
+            transaction = client.create_transaction(
+                transaction_account_id=arguments["transaction_account_id"],
+                payee=arguments["payee"],
+                amount=arguments["amount"],
+                date=tx_date,
+                is_transfer=arguments.get("is_transfer"),
+                labels=arguments.get("labels"),
+                category_id=arguments.get("category_id"),
+                note=arguments.get("note"),
+                memo=arguments.get("memo"),
+                needs_review=arguments.get("needs_review"),
+            )
+            result = transaction_to_dict(transaction)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                    # Parse quantity
-                    try:
-                        quantity = int(quantity_str) if quantity_str != "Not Applicable" else 1
-                    except:
-                        quantity = 1
+        elif name == "pocketsmith_list_labels":
+            labels = client.list_labels()
+            return [TextContent(type="text", text=json.dumps(labels, indent=2))]
 
-                    # Parse unit price
-                    try:
-                        unit_price = float(unit_price_str) if unit_price_str else 0
-                    except:
-                        unit_price = 0
+        # Tier 2 tool handlers
+        elif name == "pocketsmith_list_transactions_by_account":
+            start_date = None
+            end_date = None
+            if arguments.get("start_date"):
+                start_date = date.fromisoformat(arguments["start_date"])
+            if arguments.get("end_date"):
+                end_date = date.fromisoformat(arguments["end_date"])
 
-                    if product_name and product_name != "Product Name":
-                        items.append(
-                            AmazonItem(
-                                title=product_name,
-                                quantity=quantity,
-                                price=unit_price,
-                            )
-                        )
+            transactions = client.list_transactions_by_account(
+                account_id=arguments["account_id"],
+                start_date=start_date,
+                end_date=end_date,
+                needs_review=arguments.get("needs_review"),
+                uncategorised=arguments.get("uncategorised"),
+                search=arguments.get("search"),
+                transaction_type=arguments.get("transaction_type"),
+            )
+            result = [transaction_to_dict(t) for t in transactions]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                # Calculate grand total from items
-                grand_total = sum((i.price or 0) * i.quantity for i in items)
+        elif name == "pocketsmith_list_transactions_by_category":
+            start_date = None
+            end_date = None
+            if arguments.get("start_date"):
+                start_date = date.fromisoformat(arguments["start_date"])
+            if arguments.get("end_date"):
+                end_date = date.fromisoformat(arguments["end_date"])
 
-                # Create order
-                order = AmazonOrder(
-                    order_number=order_number or "Unknown",
-                    order_date=order_date or date.today(),
-                    grand_total=grand_total,
-                    items=items,
-                )
+            transactions = client.list_transactions_by_category(
+                category_ids=arguments["category_ids"],
+                start_date=start_date,
+                end_date=end_date,
+                needs_review=arguments.get("needs_review"),
+                uncategorised=arguments.get("uncategorised"),
+                search=arguments.get("search"),
+                transaction_type=arguments.get("transaction_type"),
+            )
+            result = [transaction_to_dict(t) for t in transactions]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                # Check if should split
-                should_split = splitter.should_split(order)
+        elif name == "pocketsmith_create_category":
+            category = client.create_category(
+                title=arguments["title"],
+                colour=arguments.get("colour"),
+                parent_id=arguments.get("parent_id"),
+                is_transfer=arguments.get("is_transfer"),
+                is_bill=arguments.get("is_bill"),
+                roll_up=arguments.get("roll_up"),
+                refund_behaviour=arguments.get("refund_behaviour"),
+            )
+            result = category_to_dict(category, include_children=False)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
-                # Get splits
-                splits = splitter.split_order(order)
+        elif name == "pocketsmith_list_events":
+            start_date = date.fromisoformat(arguments["start_date"])
+            end_date = date.fromisoformat(arguments["end_date"])
 
-                result = {
-                    "order_number": order.order_number,
-                    "order_date": order.order_date.isoformat() if order.order_date else None,
-                    "grand_total": order.grand_total,
-                    "item_count": len(order.items),
-                    "should_split": should_split,
-                    "splits": [
-                        {
-                            "title": s.title,
-                            "quantity": s.quantity,
-                            "amount": s.amount,
-                            "category_id": s.category_id,
-                            "category_name": s.category_name,
-                            "confidence": s.confidence,
-                        }
-                        for s in splits
-                    ],
+            events = client.list_events(
+                start_date=start_date,
+                end_date=end_date,
+            )
+            result = [event_to_dict(e) for e in events]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "pocketsmith_create_event":
+            event_date = date.fromisoformat(arguments["date"])
+
+            event = client.create_event(
+                scenario_id=arguments["scenario_id"],
+                category_id=arguments["category_id"],
+                date=event_date,
+                amount=arguments["amount"],
+                repeat_type=arguments["repeat_type"],
+                repeat_interval=arguments.get("repeat_interval", 1),
+                note=arguments.get("note"),
+            )
+            result = event_to_dict(event)
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "pocketsmith_delete_transaction":
+            client.delete_transaction(arguments["transaction_id"])
+            result = {
+                "success": True,
+                "transaction_id": arguments["transaction_id"],
+                "message": "Transaction deleted successfully",
+            }
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "pocketsmith_list_transaction_accounts":
+            accounts = client.list_transaction_accounts()
+            result = [transaction_account_to_dict(ta) for ta in accounts]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "pocketsmith_list_category_rules":
+            rules = client.list_category_rules()
+            result = [
+                {
+                    "id": r.id,
+                    "payee_matches": r.payee_matches,
+                    "category": r.category.title,
+                    "category_id": r.category.id,
                 }
-
-                return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
-            except Exception as e:
-                return [TextContent(type="text", text=json.dumps({"error": str(e)}, indent=2))]
-
-        elif name == "pocketsmith_add_split_note":
-            if not AMAZON_SPLIT_AVAILABLE:
-                return [TextContent(type="text", text=json.dumps({"error": "Amazon split utilities not available"}, indent=2))]
-
-            transaction_id = arguments["transaction_id"]
-            order_data = arguments["order_data"]
-            min_split_amount = arguments.get("min_split_amount", 5.0)
-            max_splits = arguments.get("max_splits", 10)
-            confirm_splits = arguments.get("confirm_splits", False)
-
-            try:
-                # Get the transaction
-                transaction = client.get_transaction(transaction_id)
-
-                # Parse order data (same as above)
-                lines = order_data.strip().split("\n")
-                items = []
-                order_number = None
-
-                for line in lines:
-                    if not line.strip():
-                        continue
-                    parts = [p.strip() for p in line.split("\t")]
-                    if len(parts) < 18:
-                        continue
-
-                    current_order_number = parts[1]
-                    quantity_str = parts[13]
-                    product_name = parts[18]
-
-                    if current_order_number and current_order_number != "Not Applicable":
-                        order_number = current_order_number
-                    if product_name and product_name != "Product Name":
-                        try:
-                            quantity = int(quantity_str) if quantity_str != "Not Applicable" else 1
-                        except:
-                            quantity = 1
-                        unit_price = float(parts[5]) if parts[5] else 0
-                        items.append(
-                            AmazonItem(title=product_name, quantity=quantity, price=unit_price)
-                        )
-
-                # Create splitter
-                splitter = OrderSplitter(
-                    min_split_amount=min_split_amount,
-                    max_splits=max_splits,
-                )
-
-                # Create order
-                grand_total = sum((i.price or 0) * i.quantity for i in items)
-                order = AmazonOrder(
-                    order_number=order_number or "Unknown",
-                    order_date=transaction.date,
-                    grand_total=grand_total,
-                    items=items,
-                )
-
-                # Get splits
-                splits = splitter.split_order(order)
-
-                # Build note with split details
-                note_lines = [f"Amazon Order: {order_number}"]
-                note_lines.append(f"Total: ${grand_total:.2f}")
-
-                if len(splits) == 1:
-                    note_lines.append(f"Category: {splits[0].category_name}")
-                else:
-                    note_lines.append("Split Items:")
-                    for i, split in enumerate(splits, 1):
-                        conf_pct = int(split.confidence * 100)
-                        note_lines.append(f"  {i}. ${split.amount:.2f} → {split.category_name} ({conf_pct}%)")
-
-                note_text = "\n".join(note_lines)
-
-                # Determine primary category (first/highest confidence)
-                primary_split = splits[0]
-
-                # Update transaction
-                updated = client.update_transaction(
-                    transaction_id=transaction_id,
-                    note=note_text,
-                    category_id=primary_split.category_id if confirm_splits else None,
-                    needs_review=False,
-                )
-
-                result = {
-                    "transaction_id": transaction_id,
-                    "order_number": order_number,
-                    "note_added": note_text,
-                    "category_updated": confirm_splits,
-                    "primary_category": {
-                        "id": primary_split.category_id,
-                        "name": primary_split.category_name,
-                    },
-                    "splits": [
-                        {
-                            "title": s.title,
-                            "amount": s.amount,
-                            "category": s.category_name,
-                            "confidence": s.confidence,
-                        }
-                        for s in splits
-                    ],
-                }
-
-                return [TextContent(type="text", text=json.dumps(result, indent=2))]
-
-            except Exception as e:
-                return [TextContent(type="text", text=json.dumps({"error": str(e)}, indent=2))]
-
-        elif name == "pocketsmith_split_transaction":
-            if not AMAZON_SPLIT_AVAILABLE:
-                return [TextContent(type="text", text=json.dumps({"error": "Amazon split utilities not available"}))]
-
-            transaction_id = arguments["transaction_id"]
-            order_data = arguments["order_data"]
-            min_split_amount = arguments.get("min_split_amount", 5.0)
-            max_splits = arguments.get("max_splits", 10)
-
-            try:
-                # Get the original transaction
-                transaction = client.get_transaction(transaction_id)
-
-                # Import Amazon models
-                # AmazonOrder, AmazonItem already imported at module level
-
-                # Parse order data - expecting simplified format with amounts
-                # Format: Order ID \t Date \t Amount \t Product Name
-                lines = order_data.strip().split("\n")
-                items = []
-                order_number = None
-                order_date = transaction.date
-
-                for line in lines:
-                    if not line.strip():
-                        continue
-                    parts = [p.strip() for p in line.split("\t")]
-                    if len(parts) < 4:
-                        continue
-
-                    current_order_number = parts[0]
-                    date_str = parts[1]
-                    amount_str = parts[2]
-                    product_name = parts[3]
-
-                    if current_order_number and current_order_number != "Not Applicable":
-                        order_number = current_order_number
-                    if product_name and product_name != "Product Name":
-                        try:
-                            amount = float(amount_str) if amount_str else 0
-                        except:
-                            amount = 0
-                        items.append(
-                            AmazonItem(title=product_name, quantity=1, price=amount)
-                        )
-
-                # Create splitter
-                splitter = OrderSplitter(
-                    min_split_amount=min_split_amount,
-                    max_splits=max_splits,
-                )
-
-                # Create order
-                grand_total = sum((i.price or 0) * i.quantity for i in items)
-                order = AmazonOrder(
-                    order_number=order_number or "Unknown",
-                    order_date=order_date,
-                    grand_total=grand_total,
-                    items=items,
-                )
-
-                # Get splits
-                splits = splitter.split_order(order)
-
-                if not splits:
-                    return [TextContent(type="text", text=json.dumps({
-                        "error": "No splits generated for this order",
-                        "transaction_id": transaction_id,
-                        "order_number": order_number,
-                    }, indent=2))]
-
-                # Build the splits array for PocketSmith API
-                # Each split needs: amount, category_id, payee, note (optional)
-                api_splits = []
-                for split in splits:
-                    # For debit transactions (expenses), use negative amounts
-                    # For credit transactions (income), use positive amounts
-                    split_amount = split.amount
-                    if transaction.amount < 0:
-                        split_amount = -abs(split.amount)
-
-                    split_data = {
-                        "amount": split_amount,
-                        "category_id": split.category_id,
-                        "payee": split.title or transaction.payee,
-                        "date": transaction.date.isoformat(),
-                        "type": transaction.type,
-                    }
-                    # Add note with item details
-                    note_lines = []
-                    if order_number:
-                        note_lines.append(f"Amazon Order: {order_number}")
-                    note_lines.append(f"Item: {split.title}")
-                    if split.category_name:
-                        note_lines.append(f"Category: {split.category_name}")
-                    split_data["note"] = "\n".join(note_lines)
-                    api_splits.append(split_data)
-
-                # Calculate sum of split amounts and original amount
-                splits_total = sum(s["amount"] for s in api_splits)
-                original_amount = transaction.amount
-
-                # The new amount for parent transaction (remainder) must satisfy:
-                # new_amount + sum(splits) == original_amount
-                # So: new_amount = original_amount - sum(splits)
-                new_parent_amount = original_amount - splits_total
-
-                # Build the update request with splits and new amount for parent
-                # Note: PocketSmith API expects splits to be provided in the PUT request
-                update_body = {
-                    "amount": new_parent_amount,
-                    "splits": api_splits,
-                }
-
-                # Use the PocketsmithClient's update_transaction method with splits
-                try:
-                    result = client.update_transaction(
-                        transaction_id=transaction_id,
-                        amount=new_parent_amount,
-                        splits=api_splits,
-                    )
-                except PocketsmithError as e:
-                    return [TextContent(type="text", text=json.dumps({
-                        "error": str(e),
-                        "status_code": e.status_code,
-                        "debug": {
-                            "original_amount": original_amount,
-                            "splits_total": splits_total,
-                            "new_parent_amount": new_parent_amount,
-                            "request_body": update_body,
-                        }
-                    }, indent=2))]
-
-                # Parse result - PocketSmith returns {transaction, split_transactions}
-                if "transaction" in result:
-                    return_data = {
-                        "transaction_id": transaction_id,
-                        "order_number": order_number,
-                        "splits_created": len(api_splits),
-                        "new_parent_amount": new_parent_amount,
-                        "updated_transaction": transaction_to_dict(result["transaction"]),
-                    }
-
-                    if "split_transactions" in result:
-                        return_data["split_transactions"] = [
-                            transaction_to_dict(t)
-                            for t in result["split_transactions"]
-                        ]
-
-                    return [TextContent(type="text", text=json.dumps(return_data, indent=2))]
-
-                # No split transactions returned
-                return [TextContent(type="text", text=json.dumps({
-                    "transaction_id": transaction_id,
-                    "order_number": order_number,
-                    "splits_created": len(api_splits),
-                    "new_parent_amount": new_parent_amount,
-                    "updated_transaction": transaction_to_dict(result),
-                }, indent=2))]
-
-            except Exception as e:
-                import traceback
-                return [TextContent(type="text", text=json.dumps({
-                    "error": str(e),
-                    "traceback": traceback.format_exc(),
-                }, indent=2))]
+                for r in rules
+            ]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]

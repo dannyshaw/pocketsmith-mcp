@@ -1,15 +1,53 @@
 [project]
 name = "pocketsmith-mcp"
 version = "0.1.0"
-description = "MCP server for Pocketsmith personal finance API"
+description = "Model Context Protocol server for Pocketsmith personal finance API - manage accounts, budgets, transactions, and more"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Danny Shaw", email = "danny@edrolo.com"}
+]
+maintainers = [
+    {name = "Danny Shaw", email = "danny@edrolo.com"}
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "pocketsmith",
+    "personal-finance",
+    "budgeting",
+    "transactions",
+    "ai-assistant",
+    "claude",
+    "financial-api"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "mcp>=1.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/dannyshaw/pocketsmith-mcp"
+Documentation = "https://github.com/dannyshaw/pocketsmith-mcp#readme"
+Repository = "https://github.com/dannyshaw/pocketsmith-mcp"
+Issues = "https://github.com/dannyshaw/pocketsmith-mcp/issues"
+Changelog = "https://github.com/dannyshaw/pocketsmith-mcp/releases"
 
 [project.scripts]
 pocketsmith-mcp = "pocketsmith_mcp.server:main"

@@ -1,6 +1,7 @@
 """Tests for the Pocketsmith API client."""
 
 from datetime import date
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import HTTPStatusError, Response
@@ -56,7 +57,7 @@ class TestPocketsmithClient:
 
         mock_httpx_client.request.assert_called_once_with(
             method="GET",
-            url="https://api.pocketsmith.com/v2/me",
+            url="https://api.test.pocketsmith.com/v2/me",
             headers=client._get_headers(),
             params=None,
             json=None,
@@ -215,15 +216,25 @@ class TestPocketsmithClient:
         mock_httpx_client: MagicMock,
     ) -> None:
         """Test that list_all_transactions handles pagination."""
+        def _make_tx(tx_id: int) -> dict:
+            return {
+                "id": tx_id,
+                "payee": f"Payee {tx_id}",
+                "amount": -10.0,
+                "date": "2025-01-15",
+                "type": "debit",
+                "is_transfer": False,
+            }
+
         # First page returns data
         page1_response = MagicMock()
         page1_response.status_code = 200
-        page1_response.json.return_value = [{"id": 1}, {"id": 2}]
+        page1_response.json.return_value = [_make_tx(1), _make_tx(2)]
 
         # Second page also returns data
         page2_response = MagicMock()
         page2_response.status_code = 200
-        page2_response.json.return_value = [{"id": 3}]
+        page2_response.json.return_value = [_make_tx(3)]
 
         # Third page is empty (end of results)
         page3_response = MagicMock()
@@ -389,3 +400,421 @@ class TestModels:
         assert tx.category is not None
         assert tx.transaction_account is not None
         assert tx.transaction_account.name == "Checking"
+
+
+class TestAccountMethods:
+    """Tests for account-related methods."""
+
+    def test_list_accounts_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_account_data: list[dict],
+    ) -> None:
+        """Test successful account listing."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_account_data
+        mock_httpx_client.request.return_value = mock_response
+
+        from pocketsmith_mcp.client import Account
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+        accounts = client.list_accounts()
+
+        assert len(accounts) == 2
+        assert all(isinstance(a, Account) for a in accounts)
+        assert accounts[0].id == 501
+        assert accounts[0].title == "Checking Account"
+        assert accounts[0].type == "bank"
+        assert accounts[0].current_balance == 5000.00
+        assert accounts[1].id == 502
+        assert accounts[1].type == "credits"
+
+    def test_get_account_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_account_data: list[dict],
+    ) -> None:
+        """Test getting a specific account."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_account_data[0]
+        mock_httpx_client.request.return_value = mock_response
+
+        from pocketsmith_mcp.client import Account
+
+        client = PocketsmithClient(api_key="test-key")
+        account = client.get_account(501)
+
+        assert isinstance(account, Account)
+        assert account.id == 501
+        assert account.title == "Checking Account"
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert call_args.kwargs["method"] == "GET"
+        assert "accounts/501" in call_args.kwargs["url"]
+
+
+class TestBudgetMethods:
+    """Tests for budget-related methods."""
+
+    def test_get_budget_summary_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_budget_summary_data: dict,
+    ) -> None:
+        """Test successful budget summary retrieval."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_budget_summary_data
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        from datetime import date
+
+        budget = client.get_budget_summary(
+            period="months",
+            interval=1,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+        )
+
+        assert budget["period"] == "months"
+        assert budget["total_actual_amount"] == -3500.00
+
+        # Verify request params
+        call_args = mock_httpx_client.request.call_args
+        params = call_args.kwargs["params"]
+        assert params["period"] == "months"
+        assert params["interval"] == 1
+        assert params["start_date"] == "2025-01-01"
+        assert params["end_date"] == "2025-01-31"
+
+    def test_list_budget_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_budget_data: list[dict],
+    ) -> None:
+        """Test successful budget listing."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_budget_data
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        budget = client.list_budget(roll_up=True)
+
+        assert isinstance(budget, list)
+        assert len(budget) == 2
+
+    def test_get_trend_analysis_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+    ) -> None:
+        """Test successful trend analysis retrieval."""
+        trend_data = {"trends": [{"date": "2025-01-01", "amount": -500.00}]}
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = trend_data
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        from datetime import date
+
+        trends = client.get_trend_analysis(
+            period="months",
+            interval=1,
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+            categories=[101, 102],
+            scenarios=[1],
+        )
+
+        assert trends is not None
+
+        # Verify request params
+        call_args = mock_httpx_client.request.call_args
+        params = call_args.kwargs["params"]
+        assert params["categories"] == "101,102"
+        assert params["scenarios"] == "1"
+
+
+class TestTransactionCreationAndLabels:
+    """Tests for transaction creation and labels."""
+
+    def test_create_transaction_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_transaction_data: list[dict],
+    ) -> None:
+        """Test successful transaction creation."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = sample_transaction_data[0]
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+
+        from datetime import date
+
+        tx = client.create_transaction(
+            transaction_account_id=601,
+            payee="Test Merchant",
+            amount=-50.00,
+            date=date(2025, 1, 15),
+            category_id=101,
+            labels=["test", "business"],
+            note="Test purchase",
+        )
+
+        assert isinstance(tx, Transaction)
+        assert tx.id == 1001
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert call_args.kwargs["method"] == "POST"
+        assert "transaction_accounts/601/transactions" in call_args.kwargs["url"]
+
+        body = call_args.kwargs["json"]
+        assert body["payee"] == "Test Merchant"
+        assert body["amount"] == -50.00
+        assert body["date"] == "2025-01-15"
+        assert body["category_id"] == 101
+        assert body["labels"] == "test,business"
+        assert body["note"] == "Test purchase"
+
+    def test_list_labels_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_label_data: list[str],
+    ) -> None:
+        """Test successful label listing."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_label_data
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        labels = client.list_labels()
+
+        assert isinstance(labels, list)
+        assert len(labels) == 4
+        assert "travel" in labels
+        assert "business" in labels
+
+
+class TestEventMethods:
+    """Tests for event-related methods."""
+
+    def test_list_events_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_event_data: list[dict],
+    ) -> None:
+        """Test successful event listing."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_event_data
+        mock_httpx_client.request.return_value = mock_response
+
+        from datetime import date
+        from pocketsmith_mcp.client import Event
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        events = client.list_events(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 31),
+        )
+
+        assert len(events) == 2
+        assert all(isinstance(e, Event) for e in events)
+        assert events[0].id == "123-1704067200"
+        assert events[0].amount == -150.00
+        assert events[0].repeat_type == "monthly"
+
+    def test_create_event_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_event_data: list[dict],
+    ) -> None:
+        """Test successful event creation."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = sample_event_data[0]
+        mock_httpx_client.request.return_value = mock_response
+
+        from datetime import date
+        from pocketsmith_mcp.client import Event
+
+        client = PocketsmithClient(api_key="test-key")
+
+        event = client.create_event(
+            scenario_id=1,
+            category_id=101,
+            date=date(2025, 1, 1),
+            amount=-150.00,
+            repeat_type="monthly",
+            note="Monthly bill",
+        )
+
+        assert isinstance(event, Event)
+        assert event.id == "123-1704067200"
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert call_args.kwargs["method"] == "POST"
+        assert "scenarios/1/events" in call_args.kwargs["url"]
+
+        body = call_args.kwargs["json"]
+        assert body["category_id"] == 101
+        assert body["amount"] == -150.00
+        assert body["repeat_type"] == "monthly"
+
+
+class TestTier2Methods:
+    """Tests for Tier 2 methods."""
+
+    def test_list_transactions_by_account(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_transaction_data: list[dict],
+    ) -> None:
+        """Test listing transactions by account."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_transaction_data
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+
+        transactions = client.list_transactions_by_account(account_id=501)
+
+        assert len(transactions) == 2
+        assert all(isinstance(t, Transaction) for t in transactions)
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert "accounts/501/transactions" in call_args.kwargs["url"]
+
+    def test_list_transactions_by_category(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_transaction_data: list[dict],
+    ) -> None:
+        """Test listing transactions by category."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_transaction_data
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+
+        transactions = client.list_transactions_by_category(category_ids=[101, 102])
+
+        assert len(transactions) == 2
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert "categories/101,102/transactions" in call_args.kwargs["url"]
+
+    def test_create_category_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_category_data: list[dict],
+    ) -> None:
+        """Test successful category creation."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = sample_category_data[0]
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        category = client.create_category(
+            title="New Category",
+            colour="#FF00FF",
+            is_bill=True,
+        )
+
+        assert isinstance(category, Category)
+        assert category.id == 101
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert call_args.kwargs["method"] == "POST"
+        body = call_args.kwargs["json"]
+        assert body["title"] == "New Category"
+        assert body["colour"] == "#FF00FF"
+        assert body["is_bill"] is True
+
+    def test_delete_transaction_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+    ) -> None:
+        """Test successful transaction deletion."""
+        mock_response = MagicMock()
+        mock_response.status_code = 204
+        mock_response.json.return_value = None
+        mock_httpx_client.request.return_value = mock_response
+
+        client = PocketsmithClient(api_key="test-key")
+
+        # Should not raise an exception
+        client.delete_transaction(transaction_id=1001)
+
+        # Verify request
+        call_args = mock_httpx_client.request.call_args
+        assert call_args.kwargs["method"] == "DELETE"
+        assert "transactions/1001" in call_args.kwargs["url"]
+
+    def test_list_transaction_accounts_success(
+        self,
+        mock_settings_env: None,
+        mock_httpx_client: MagicMock,
+        sample_transaction_account_data: list[dict],
+    ) -> None:
+        """Test successful transaction account listing."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = sample_transaction_account_data
+        mock_httpx_client.request.return_value = mock_response
+
+        from pocketsmith_mcp.client import TransactionAccount
+
+        client = PocketsmithClient(api_key="test-key")
+        client._user_id = 12345
+
+        accounts = client.list_transaction_accounts()
+
+        assert len(accounts) == 2
+        assert all(isinstance(ta, TransactionAccount) for ta in accounts)
+        assert accounts[0].id == 601
+        assert accounts[0].name == "Checking"
+        assert accounts[0].institution is not None
+        assert accounts[0].institution.title == "Test Bank"

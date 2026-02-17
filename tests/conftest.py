@@ -1,11 +1,9 @@
 """Test fixtures and configuration for pocketsmith-mcp tests."""
 
-import os
 from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from httpx import Response
 
 
 @pytest.fixture
@@ -187,5 +185,209 @@ def sample_category_rules_data() -> list[dict]:
                 "is_bill": False,
                 "children": [],
             },
+        },
+    ]
+
+
+@pytest.fixture
+def sample_account_data() -> list[dict]:
+    """Sample account data from API."""
+    return [
+        {
+            "id": 501,
+            "title": "Checking Account",
+            "currency_code": "USD",
+            "type": "bank",
+            "is_net_worth": True,
+            "current_balance": 5000.00,
+            "current_balance_in_base_currency": 5000.00,
+            "current_balance_date": "2025-01-15",
+            "safe_balance": 4500.00,
+            "safe_balance_in_base_currency": 4500.00,
+            "primary_transaction_account": {
+                "id": 601,
+                "name": "Checking",
+                "number": "1234",
+                "current_balance": 5000.00,
+                "currency_code": "USD",
+            },
+            "transaction_accounts": [],
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2025-01-15T00:00:00Z",
+        },
+        {
+            "id": 502,
+            "title": "Credit Card",
+            "currency_code": "USD",
+            "type": "credits",
+            "is_net_worth": True,
+            "current_balance": -1500.00,
+            "current_balance_in_base_currency": -1500.00,
+            "current_balance_date": "2025-01-15",
+            "safe_balance": -1500.00,
+            "safe_balance_in_base_currency": -1500.00,
+            "primary_transaction_account": {
+                "id": 602,
+                "name": "Credit Card",
+                "number": "5678",
+                "current_balance": -1500.00,
+                "currency_code": "USD",
+            },
+            "transaction_accounts": [],
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2025-01-15T00:00:00Z",
+        },
+    ]
+
+
+@pytest.fixture
+def sample_event_data() -> list[dict]:
+    """Sample event data from API."""
+    return [
+        {
+            "id": "123-1704067200",
+            "category": {
+                "id": 101,
+                "title": "Utilities",
+                "colour": "#FF0000",
+                "parent_id": None,
+                "is_transfer": False,
+                "is_bill": True,
+                "children": [],
+            },
+            "scenario": {
+                "id": 1,
+                "title": "Primary",
+                "description": None,
+            },
+            "amount": -150.00,
+            "amount_in_base_currency": -150.00,
+            "currency_code": "USD",
+            "date": "2025-01-01",
+            "colour": "#FF0000",
+            "note": "Monthly electricity bill",
+            "repeat_type": "monthly",
+            "repeat_interval": 1,
+            "series_id": 123,
+            "series_start_id": None,
+            "infinite_series": True,
+        },
+        {
+            "id": "124-1704672000",
+            "category": {
+                "id": 102,
+                "title": "Rent",
+                "colour": "#00FF00",
+                "parent_id": None,
+                "is_transfer": False,
+                "is_bill": True,
+                "children": [],
+            },
+            "scenario": {
+                "id": 1,
+                "title": "Primary",
+                "description": None,
+            },
+            "amount": -2000.00,
+            "amount_in_base_currency": -2000.00,
+            "currency_code": "USD",
+            "date": "2025-01-08",
+            "colour": "#00FF00",
+            "note": "Monthly rent payment",
+            "repeat_type": "monthly",
+            "repeat_interval": 1,
+            "series_id": 124,
+            "series_start_id": None,
+            "infinite_series": True,
+        },
+    ]
+
+
+@pytest.fixture
+def sample_transaction_account_data() -> list[dict]:
+    """Sample transaction account data from API."""
+    return [
+        {
+            "id": 601,
+            "name": "Checking",
+            "number": "1234",
+            "current_balance": 5000.00,
+            "current_balance_date": "2025-01-15",
+            "currency_code": "USD",
+            "type": "bank",
+            "is_net_worth": True,
+            "starting_balance": 0.00,
+            "starting_balance_date": "2024-01-01",
+            "safe_balance": 4500.00,
+            "institution": {
+                "id": 1,
+                "title": "Test Bank",
+                "currency_code": "USD",
+            },
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2025-01-15T00:00:00Z",
+        },
+        {
+            "id": 602,
+            "name": "Credit Card",
+            "number": "5678",
+            "current_balance": -1500.00,
+            "current_balance_date": "2025-01-15",
+            "currency_code": "USD",
+            "type": "credits",
+            "is_net_worth": True,
+            "starting_balance": 0.00,
+            "starting_balance_date": "2024-01-01",
+            "safe_balance": -1500.00,
+            "institution": {
+                "id": 2,
+                "title": "Test Credit Union",
+                "currency_code": "USD",
+            },
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2025-01-15T00:00:00Z",
+        },
+    ]
+
+
+@pytest.fixture
+def sample_label_data() -> list[str]:
+    """Sample label data from API."""
+    return ["travel", "business", "personal", "tax-deductible"]
+
+
+@pytest.fixture
+def sample_budget_summary_data() -> dict:
+    """Sample budget summary data from API."""
+    return {
+        "period": "months",
+        "interval": 1,
+        "start_date": "2025-01-01",
+        "end_date": "2025-01-31",
+        "total_actual_amount": -3500.00,
+        "total_forecast_amount": -3200.00,
+        "total_current_amount": -3500.00,
+    }
+
+
+@pytest.fixture
+def sample_budget_data() -> list[dict]:
+    """Sample budget data from API."""
+    return [
+        {
+            "category": {
+                "id": 101,
+                "title": "Groceries",
+            },
+            "actual": -500.00,
+            "forecast": -450.00,
+        },
+        {
+            "category": {
+                "id": 102,
+                "title": "Utilities",
+            },
+            "actual": -150.00,
+            "forecast": -150.00,
         },
     ]
