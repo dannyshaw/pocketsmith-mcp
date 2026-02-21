@@ -184,6 +184,7 @@ class PocketsmithClient:
         self._api_key = api_key or settings.pocketsmith_api_key.get_secret_value()
         self._base_url = base_url or settings.pocketsmith_base_url
         self._user_id: int | None = None
+        self._categories: list["Category"] | None = None
 
     def _get_headers(self) -> dict[str, str]:
         """Get headers for API requests."""
@@ -242,10 +243,13 @@ class PocketsmithClient:
         return self._user_id
 
     def list_categories(self, user_id: int | None = None) -> list[Category]:
-        """List all categories for a user."""
+        """List all categories for a user (cached for session lifetime)."""
+        if self._categories is not None:
+            return self._categories
         user_id = user_id or self.get_user_id()
         data = self._request("GET", f"/users/{user_id}/categories")
-        return [Category.model_validate(c) for c in data]
+        self._categories = [Category.model_validate(c) for c in data]
+        return self._categories
 
     def get_category(self, category_id: int) -> Category:
         """Get a specific category."""
@@ -610,6 +614,7 @@ class PocketsmithClient:
             body["refund_behaviour"] = refund_behaviour
 
         data = self._request("POST", f"/users/{user_id}/categories", json=body)
+        self._categories = None  # invalidate cache
         return Category.model_validate(data)
 
     def list_events(

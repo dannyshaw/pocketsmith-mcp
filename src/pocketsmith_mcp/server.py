@@ -34,56 +34,60 @@ def get_client() -> PocketsmithClient:
 
 
 def transaction_to_dict(t: Transaction) -> dict[str, Any]:
-    """Convert a transaction to a dictionary for JSON output."""
-    return {
+    """Convert a transaction to a compact dictionary, omitting null/default values."""
+    d: dict[str, Any] = {
         "id": t.id,
         "date": t.date.isoformat(),
         "payee": t.payee,
-        "original_payee": t.original_payee,
         "amount": t.amount,
         "type": t.type,
-        "category": t.category.title if t.category else None,
-        "category_id": t.category.id if t.category else None,
-        "note": t.note,
-        "memo": t.memo,
-        "labels": t.labels,
-        "needs_review": t.needs_review,
-        "status": t.status,
-        "account": t.transaction_account.name if t.transaction_account else None,
-        "is_transfer": t.is_transfer,
     }
+    if t.category:
+        d["category"] = t.category.title
+        d["category_id"] = t.category.id
+    if t.transaction_account:
+        d["account"] = t.transaction_account.name
+    if t.note:
+        d["note"] = t.note
+    if t.labels:
+        d["labels"] = t.labels
+    if t.needs_review:
+        d["needs_review"] = True
+    if t.is_transfer:
+        d["is_transfer"] = True
+    return d
 
 
 def category_to_dict(c: Category, include_children: bool = True) -> dict[str, Any]:
-    """Convert a category to a dictionary for JSON output."""
-    result = {
+    """Convert a category to a compact dictionary for JSON output."""
+    result: dict[str, Any] = {
         "id": c.id,
         "title": c.title,
-        "colour": c.colour,
-        "parent_id": c.parent_id,
-        "is_transfer": c.is_transfer,
-        "is_bill": c.is_bill,
     }
+    if c.parent_id is not None:
+        result["parent_id"] = c.parent_id
+    if c.is_transfer:
+        result["is_transfer"] = True
+    if c.is_bill:
+        result["is_bill"] = True
     if include_children and c.children:
         result["children"] = [category_to_dict(child, include_children=True) for child in c.children]
     return result
 
 
 def flatten_categories(categories: list[Category]) -> list[dict[str, Any]]:
-    """Flatten category tree into a list with full paths."""
+    """Flatten category tree into a compact list with full paths."""
     result = []
 
     def walk(cats: list[Category], parent_path: str = ""):
         for c in cats:
             path = f"{parent_path}/{c.title}" if parent_path else c.title
-            result.append({
-                "id": c.id,
-                "title": c.title,
-                "full_path": path,
-                "parent_id": c.parent_id,
-                "is_transfer": c.is_transfer,
-                "is_bill": c.is_bill,
-            })
+            entry: dict[str, Any] = {"id": c.id, "path": path}
+            if c.is_transfer:
+                entry["is_transfer"] = True
+            if c.is_bill:
+                entry["is_bill"] = True
+            result.append(entry)
             if c.children:
                 walk(c.children, path)
 
@@ -92,58 +96,86 @@ def flatten_categories(categories: list[Category]) -> list[dict[str, Any]]:
 
 
 def account_to_dict(a: Account) -> dict[str, Any]:
-    """Convert an account to a dictionary for JSON output."""
-    return {
+    """Convert an account to a compact dictionary for JSON output."""
+    d: dict[str, Any] = {
         "id": a.id,
         "title": a.title,
         "type": a.type,
         "currency_code": a.currency_code,
-        "is_net_worth": a.is_net_worth,
         "current_balance": a.current_balance,
-        "current_balance_in_base_currency": a.current_balance_in_base_currency,
-        "current_balance_date": a.current_balance_date,
-        "safe_balance": a.safe_balance,
-        "safe_balance_in_base_currency": a.safe_balance_in_base_currency,
-        "primary_account": a.primary_transaction_account.name if a.primary_transaction_account else None,
-        "created_at": a.created_at.isoformat() if a.created_at else None,
-        "updated_at": a.updated_at.isoformat() if a.updated_at else None,
     }
+    if a.safe_balance is not None:
+        d["safe_balance"] = a.safe_balance
+    if a.is_net_worth:
+        d["is_net_worth"] = True
+    return d
 
 
 def event_to_dict(e: Event) -> dict[str, Any]:
-    """Convert an event to a dictionary for JSON output."""
-    return {
+    """Convert an event to a compact dictionary for JSON output."""
+    d: dict[str, Any] = {
         "id": e.id,
         "date": e.date.isoformat(),
         "amount": e.amount,
-        "currency_code": e.currency_code,
-        "category": e.category.title if e.category else None,
-        "category_id": e.category.id if e.category else None,
-        "note": e.note,
         "repeat_type": e.repeat_type,
-        "repeat_interval": e.repeat_interval,
-        "series_id": e.series_id,
-        "infinite_series": e.infinite_series,
-        "scenario": e.scenario.title if e.scenario else None,
     }
+    if e.category:
+        d["category"] = e.category.title
+        d["category_id"] = e.category.id
+    if e.scenario:
+        d["scenario"] = e.scenario.title
+    if e.note:
+        d["note"] = e.note
+    if e.repeat_interval != 1:
+        d["repeat_interval"] = e.repeat_interval
+    if e.infinite_series:
+        d["infinite_series"] = True
+    return d
 
 
 def transaction_account_to_dict(ta: TransactionAccount) -> dict[str, Any]:
-    """Convert a transaction account to a dictionary for JSON output."""
-    return {
+    """Convert a transaction account to a compact dictionary for JSON output."""
+    d: dict[str, Any] = {
         "id": ta.id,
         "name": ta.name,
-        "number": ta.number,
-        "type": ta.type,
-        "currency_code": ta.currency_code,
         "current_balance": ta.current_balance,
-        "current_balance_date": ta.current_balance_date,
-        "safe_balance": ta.safe_balance,
-        "starting_balance": ta.starting_balance,
-        "starting_balance_date": ta.starting_balance_date,
-        "institution": ta.institution.title if ta.institution else None,
-        "is_net_worth": ta.is_net_worth,
     }
+    if ta.number:
+        d["number"] = ta.number
+    if ta.type:
+        d["type"] = ta.type
+    if ta.currency_code:
+        d["currency_code"] = ta.currency_code
+    if ta.institution:
+        d["institution"] = ta.institution.title
+    if ta.is_net_worth:
+        d["is_net_worth"] = True
+    return d
+
+
+def filter_transactions(
+    transactions: list[Transaction],
+    exclude_transfers: bool = True,
+    exclude_zero: bool = True,
+    exclude_category_ids: list[int] | None = None,
+) -> list[Transaction]:
+    """Filter transactions, removing transfers, zero-amount, and excluded categories by default."""
+    if exclude_transfers:
+        transactions = [
+            t for t in transactions
+            if not t.is_transfer and not (t.category and t.category.is_transfer)
+        ]
+    if exclude_zero:
+        transactions = [t for t in transactions if t.amount != 0]
+    if exclude_category_ids:
+        excl = set(exclude_category_ids)
+        transactions = [t for t in transactions if not (t.category and t.category.id in excl)]
+    return transactions
+
+
+def _dumps(obj: Any) -> str:
+    """Compact JSON serialization optimized for LLM consumption."""
+    return json.dumps(obj, separators=(",", ":"))
 
 
 @server.list_tools()
@@ -152,7 +184,7 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="pocketsmith_list_transactions",
-            description="List transactions from Pocketsmith with optional filters. Returns transactions as JSON.",
+            description="List transactions from Pocketsmith with optional filters. Transfers excluded by default.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -184,6 +216,19 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of transactions to return (default 100)",
+                    },
+                    "exclude_transfers": {
+                        "type": "boolean",
+                        "description": "Exclude transfer transactions (default true)",
+                    },
+                    "exclude_zero": {
+                        "type": "boolean",
+                        "description": "Exclude zero-amount transactions (default true)",
+                    },
+                    "exclude_category_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Category IDs to exclude from results",
                     },
                 },
             },
@@ -247,7 +292,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="pocketsmith_search_transactions",
-            description="Search transactions by keyword (payee, category, notes). Shortcut for list_transactions with search parameter.",
+            description="Search transactions by keyword (payee, category, notes). Transfers excluded by default.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -258,6 +303,19 @@ async def list_tools() -> list[Tool]:
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of transactions to return (default 50)",
+                    },
+                    "exclude_transfers": {
+                        "type": "boolean",
+                        "description": "Exclude transfer transactions (default true)",
+                    },
+                    "exclude_zero": {
+                        "type": "boolean",
+                        "description": "Exclude zero-amount transactions (default true)",
+                    },
+                    "exclude_category_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Category IDs to exclude from results",
                     },
                 },
                 "required": ["query"],
@@ -485,7 +543,7 @@ async def list_tools() -> list[Tool]:
         # Tier 2 tools
         Tool(
             name="pocketsmith_list_transactions_by_account",
-            description="List transactions for a specific account with optional filters",
+            description="List transactions for a specific account with optional filters. Transfers excluded by default.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -518,13 +576,26 @@ async def list_tools() -> list[Tool]:
                         "enum": ["debit", "credit"],
                         "description": "Filter by transaction type",
                     },
+                    "exclude_transfers": {
+                        "type": "boolean",
+                        "description": "Exclude transfer transactions (default true)",
+                    },
+                    "exclude_zero": {
+                        "type": "boolean",
+                        "description": "Exclude zero-amount transactions (default true)",
+                    },
+                    "exclude_category_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Category IDs to exclude from results",
+                    },
                 },
                 "required": ["account_id"],
             },
         ),
         Tool(
             name="pocketsmith_list_transactions_by_category",
-            description="List transactions for one or more categories",
+            description="List transactions for one or more categories. Transfers excluded by default.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -557,6 +628,19 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "enum": ["debit", "credit"],
                         "description": "Filter by transaction type",
+                    },
+                    "exclude_transfers": {
+                        "type": "boolean",
+                        "description": "Exclude transfer transactions (default true)",
+                    },
+                    "exclude_zero": {
+                        "type": "boolean",
+                        "description": "Exclude zero-amount transactions (default true)",
+                    },
+                    "exclude_category_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Category IDs to exclude from results",
                     },
                 },
                 "required": ["category_ids"],
@@ -713,17 +797,24 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 transaction_type=arguments.get("transaction_type"),
             )
 
+            transactions = filter_transactions(
+                transactions,
+                exclude_transfers=arguments.get("exclude_transfers", True),
+                exclude_zero=arguments.get("exclude_zero", True),
+                exclude_category_ids=arguments.get("exclude_category_ids"),
+            )
+
             limit = arguments.get("limit", 100)
             if len(transactions) > limit:
                 transactions = transactions[:limit]
 
             result = [transaction_to_dict(t) for t in transactions]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_get_transaction":
             transaction = client.get_transaction(arguments["transaction_id"])
             result = transaction_to_dict(transaction)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_update_transaction":
             transaction = client.update_transaction(
@@ -735,20 +826,28 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 needs_review=arguments.get("needs_review"),
             )
             result = transaction_to_dict(transaction)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_categories":
             categories = client.list_categories()
             result = flatten_categories(categories)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_search_transactions":
             transactions = client.search_transactions(arguments["query"])
+
+            transactions = filter_transactions(
+                transactions,
+                exclude_transfers=arguments.get("exclude_transfers", True),
+                exclude_zero=arguments.get("exclude_zero", True),
+                exclude_category_ids=arguments.get("exclude_category_ids"),
+            )
+
             limit = arguments.get("limit", 50)
             if len(transactions) > limit:
                 transactions = transactions[:limit]
             result = [transaction_to_dict(t) for t in transactions]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_categorize_transaction":
             mark_reviewed = arguments.get("mark_reviewed", True)
@@ -759,7 +858,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 needs_review=False if mark_reviewed else None,
             )
             result = transaction_to_dict(transaction)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_create_category_rule":
             rule = client.create_category_rule(
@@ -774,33 +873,30 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 "category": rule.category.title,
                 "category_id": rule.category.id,
             }
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_get_status":
             user = client.get_me()
             result = {
-                "connected": True,
-                "user": {
-                    "id": user.id,
-                    "login": user.login,
-                    "name": user.name,
-                    "email": user.email,
-                    "currency": user.base_currency_code,
-                    "timezone": user.time_zone,
-                },
+                "id": user.id,
+                "login": user.login,
+                "name": user.name,
+                "email": user.email,
+                "currency": user.base_currency_code,
+                "timezone": user.time_zone,
             }
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         # Tier 1 tool handlers
         elif name == "pocketsmith_list_accounts":
             accounts = client.list_accounts()
             result = [account_to_dict(a) for a in accounts]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_get_account":
             account = client.get_account(arguments["account_id"])
             result = account_to_dict(account)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_get_budget_summary":
             start_date = date.fromisoformat(arguments["start_date"])
@@ -814,11 +910,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 start_date=start_date,
                 end_date=end_date,
             )
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_budget":
             result = client.list_budget(roll_up=arguments.get("roll_up"))
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_get_trend_analysis":
             start_date = date.fromisoformat(arguments["start_date"])
@@ -834,7 +930,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 categories=arguments.get("categories"),
                 scenarios=arguments.get("scenarios"),
             )
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_create_transaction":
             tx_date = date.fromisoformat(arguments["date"])
@@ -852,11 +948,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 needs_review=arguments.get("needs_review"),
             )
             result = transaction_to_dict(transaction)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_labels":
             labels = client.list_labels()
-            return [TextContent(type="text", text=json.dumps(labels, indent=2))]
+            return [TextContent(type="text", text=_dumps(labels))]
 
         # Tier 2 tool handlers
         elif name == "pocketsmith_list_transactions_by_account":
@@ -876,8 +972,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 search=arguments.get("search"),
                 transaction_type=arguments.get("transaction_type"),
             )
+
+            transactions = filter_transactions(
+                transactions,
+                exclude_transfers=arguments.get("exclude_transfers", True),
+                exclude_zero=arguments.get("exclude_zero", True),
+                exclude_category_ids=arguments.get("exclude_category_ids"),
+            )
+
             result = [transaction_to_dict(t) for t in transactions]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_transactions_by_category":
             start_date = None
@@ -896,8 +1000,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 search=arguments.get("search"),
                 transaction_type=arguments.get("transaction_type"),
             )
+
+            transactions = filter_transactions(
+                transactions,
+                exclude_transfers=arguments.get("exclude_transfers", True),
+                exclude_zero=arguments.get("exclude_zero", True),
+                exclude_category_ids=arguments.get("exclude_category_ids"),
+            )
+
             result = [transaction_to_dict(t) for t in transactions]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_create_category":
             category = client.create_category(
@@ -910,7 +1022,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 refund_behaviour=arguments.get("refund_behaviour"),
             )
             result = category_to_dict(category, include_children=False)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_events":
             start_date = date.fromisoformat(arguments["start_date"])
@@ -921,7 +1033,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 end_date=end_date,
             )
             result = [event_to_dict(e) for e in events]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_create_event":
             event_date = date.fromisoformat(arguments["date"])
@@ -936,21 +1048,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 note=arguments.get("note"),
             )
             result = event_to_dict(event)
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_delete_transaction":
             client.delete_transaction(arguments["transaction_id"])
-            result = {
-                "success": True,
-                "transaction_id": arguments["transaction_id"],
-                "message": "Transaction deleted successfully",
-            }
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            result = {"deleted": arguments["transaction_id"]}
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_transaction_accounts":
             accounts = client.list_transaction_accounts()
             result = [transaction_account_to_dict(ta) for ta in accounts]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         elif name == "pocketsmith_list_category_rules":
             rules = client.list_category_rules()
@@ -963,17 +1071,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 }
                 for r in rules
             ]
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=_dumps(result))]
 
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     except PocketsmithError as e:
         error_result = {"error": str(e), "status_code": e.status_code}
-        return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
+        return [TextContent(type="text", text=_dumps(error_result))]
     except Exception as e:
         error_result = {"error": str(e)}
-        return [TextContent(type="text", text=json.dumps(error_result, indent=2))]
+        return [TextContent(type="text", text=_dumps(error_result))]
 
 
 async def run_server():
