@@ -152,4 +152,3 @@ Users should understand the full-access nature of the API key and follow securit
 - [x] Security documentation created
 - [ ] Security contact information added
 - [ ] Code signed (optional)
-- [ ] Published to PyPI with verified account

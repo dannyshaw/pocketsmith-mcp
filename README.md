@@ -2,9 +2,10 @@
 
 A comprehensive [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for the [Pocketsmith](https://pocketsmith.com) personal finance API. Transform your AI assistant into a powerful financial management tool with access to accounts, budgets, transactions, and more.
 
-[![PyPI version](https://badge.fury.io/py/pocketsmith-mcp.svg)](https://badge.fury.io/py/pocketsmith-mcp)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> Personal project — not published to PyPI. Install from source (see below).
 
 ## ✨ Features
 
@@ -45,26 +46,18 @@ A comprehensive [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 
 
 ## 📦 Installation
 
-### Quick Start with uvx (Recommended)
-
-The fastest way to try it out:
-
-```bash
-uvx pocketsmith-mcp
-```
-
-### Install via pip
-
-```bash
-pip install pocketsmith-mcp
-```
-
 ### Install from source
 
 ```bash
 git clone https://github.com/dannyshaw/pocketsmith-mcp.git
 cd pocketsmith-mcp
 pip install -e .
+```
+
+Or run directly with `uv` from the source directory (no install needed) — configure your MCP client to invoke:
+
+```bash
+uv --directory /path/to/pocketsmith-mcp run pocketsmith-mcp
 ```
 
 ## 🔑 Configuration

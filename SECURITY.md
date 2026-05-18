@@ -55,7 +55,7 @@ If you discover a security vulnerability, please report it responsibly:
 
 1. **DO NOT** open a public GitHub issue
 2. Use GitHub's [Security Advisory](https://github.com/dannyshaw/pocketsmith-mcp/security/advisories/new) feature
-3. Or email: danny@edrolo.com
+3. Or email: daniel.m.shaw@gmail.com
 
 ### What to Include
 
@@ -83,7 +83,6 @@ Security updates will be released as soon as possible and announced via:
 
 - GitHub Security Advisories
 - Release notes
-- PyPI package updates
 
 ## Audit History
 
@@ -104,6 +103,6 @@ Run `pip-audit` or `safety check` to verify dependency security.
 
 ## Contact
 
-For security concerns: danny@edrolo.com
+For security concerns: daniel.m.shaw@gmail.com
 
 For general questions: Use GitHub Issues (do not include sensitive information)

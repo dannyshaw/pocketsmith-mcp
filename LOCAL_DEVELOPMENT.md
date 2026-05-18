@@ -283,9 +283,4 @@ python -c "import asyncio; from pocketsmith_mcp.server import list_tools; asynci
 - Point to local directory
 - Set POCKETSMITH_API_KEY in config
 
-**Production (Published):**
-- Use `uvx pocketsmith-mcp`
-- Install from PyPI
-- Set POCKETSMITH_API_KEY in config
-
-Both use the same config format, just different `command` values!
+Local-only project — not published to a package index. Always point your MCP client at the source directory.
